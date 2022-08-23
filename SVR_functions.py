@@ -31,6 +31,7 @@ def regress_covariates(data, covariates):
     """
     if data.ndim==1:
         data = np.expand_dims(data, axis=1)
+        
     if covariates.ndim==1:
         covariates = np.expand_dims(covariates, axis=1)
     
@@ -45,7 +46,7 @@ def regress_covariates(data, covariates):
         yhat = np.sum(np.transpose(coefficients[:,x])*covariates,axis=1)
         resids[:,x] = y - np.transpose(yhat)
     
-    return(resids)
+    return(np.squeeze(resids))
 
 
 def cv_fit(model, X, Y, cv, groups=None):
