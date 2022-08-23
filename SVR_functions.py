@@ -13,6 +13,41 @@ import itertools
 import random
 import numba as nb
 
+
+def regress_covariates(data, covariates):
+    """
+    Parameters
+    ----------
+    data: numpy array
+        a 1D or 2D dataset to regress the covariates from.
+    covariates: numpy array
+        a 1D or 2D array to regress from the data.
+    
+    Return
+    ------
+    resids: numpy array
+        The residuals from the regression model of the same size as data.
+    
+    """
+    if data.ndim==1:
+        data = np.expand_dims(data, axis=1)
+    if covariates.ndim==1:
+        covariates = np.expand_dims(covariates, axis=1)
+    
+    coefficients = np.zeros((covariates.shape[1],data.shape[1]))
+    resids = np.zeros(data.shape)
+
+    # perform column-wise matrix inversion
+    for x in range(0,data.shape[1]):
+        y = data[:,x]
+        inv_mat = np.linalg.pinv(covariates)
+        coefficients[:,x] = np.dot(inv_mat,y)
+        yhat = np.sum(np.transpose(coefficients[:,x])*covariates,axis=1)
+        resids[:,x] = y - np.transpose(yhat)
+    
+    return(resids)
+
+
 def cv_fit(model, X, Y, cv, groups=None):
     """
     This function fits a support vetor model, with cross validation.
