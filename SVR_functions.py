@@ -87,18 +87,20 @@ def cv_fit(model, X, Y, cv, groups=None):
                        cv=cv, return_estimator=True, scoring=scoring)
     Y_pred = cross_val_predict(model, X=X, y=Y, groups=groups, n_jobs=10, cv=cv)
     train_scores = results['test_score']
-
-    for i, a in enumerate(results['estimator']):
-        c = np.expand_dims(a.coef_, axis=2)
-        if i==0:
-            weights = c
-        else:
-            weights = np.concatenate([weights, c], axis=2)
-    
     estimators = results['estimator']
-    weights = np.absolute(weights)
-    mean_weights = np.mean(np.mean(weights, axis=2), axis=0, keepdims=True)
-    return(estimators, weights, mean_weights, Y_pred, train_scores)
+    
+    if isinstance(model, SVR):
+        for i, a in enumerate(results['estimator']):
+            c = np.expand_dims(a.coef_, axis=2)
+            if i==0:
+                weights = c
+            else:
+                weights = np.concatenate([weights, c], axis=2)
+        weights = np.absolute(weights)
+        mean_weights = np.mean(np.mean(weights, axis=2), axis=0, keepdims=True)
+        return(estimators, weights, mean_weights, Y_pred, train_scores)
+    else:
+        return(estimators, Y_pred, train_scores)
 
 
 def predict_out(X, Y, estimators, kind):
