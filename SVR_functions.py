@@ -252,6 +252,9 @@ def boot_predict(estimators, X, Y, outdir, kind='regress', ci=95, samples=10000)
         results.loc['pearsonr','KSpval'] = p
 
     results.to_csv(os.path.join(outdir, 'bootstrapped_test_accuracy_randN.csv'))
+    np.save(os.path.join(outdir, 'bootstrapped_distribution_testscores.npy'), test_scores)
+    np.save(os.path.join(outdir, 'bootstrapped_distribution_spearmanr.npy'), spearmanr)
+    np.save(os.path.join(outdir, 'bootstrapped_distribution_pearsonr.npy'), pearsonr)
     return(results)
 
 
@@ -303,44 +306,61 @@ def permuted_p(model, X, Y, cv, out_folder, train_score, test_score, groups=None
     return(results)
 
 
-def permuted_importance(estimators_list, X, Y, labels, out_folder):
-    results = []
+def permuted_importance(estimators_list, X, Y, labels, out_folder, model_score, percent=20, n_perms=100):
+    # determine which connections to permute
+    weights = []
+    for a in estimators_list:
+        weights.append(np.abs(estimators_list[0].coef_))
+    weights = np.mean(np.concatenate(weights, axis=0), axis=0)
+    cutoff = np.percentile(weights, 100-percent)
+    features_to_perm = weights>cutoff
+    permed_feature_labels = np.array(labels)[features_to_perm]
+
+    # set up permuation
     if isinstance(estimators_list[0], SVC):
         scoring = 'accuracy'
     elif isinstance(estimators_list[0], SVR):
         scoring = 'neg_mean_squared_error'
-    
-    for a in estimators_list:
-        r = permutation_importance(a, X, Y, scoring=scoring, n_repeats=100, n_jobs=10, random_state=42)
-        results.append(r)
 
-    for i, r in enumerate(results):
-        if i==0:
-            imp_scores = r['importances'].T
-        else:
-            imp_scores = np.concatenate([imp_scores, r['importances'].T], axis=0)
-    
+    np.save(os.path.join(out_folder, 'temp.npy'), X)
+    rng = np.random.default_rng()
+    perm_feat_imp = pd.DataFrame(index=permed_feature_labels, columns=range(0,n_perms))
+
+    # conduct permutation
+    for i in range(0,n_perms):
+        for f in permed_feature_labels:
+            print(f)
+            # permute only the selected features
+            perm_X = np.load(os.path.join(out_folder, 'temp.npy'))
+            perm = perm_X[:,labels==f]
+            perm = rng.permutation(rng.permutation(perm, axis=0), axis=1)
+            perm_X[:,labels==f] = perm
+            results = cross_validate(model, X=perm_X, y=Y, n_jobs=10, cv=cv, scoring=scoring)
+            perm_imp = model_score - np.mean(results['test_score'])
+            perm_feat_imp.loc[f,i] = perm_imp
+
+    os.remove(os.path.join(out_folder, 'temp.npy'))
+
     # save dataframe with all the scores
-    imp_score_table = pd.DataFrame(imp_scores.T, index=labels)
-    imp_score_table.to_csv(os.path(out_folder, 'permuted_importance_scores.csv'))
-    
+    perm_feat_imp.to_csv(os.path.join(out_folder, 'permuted_importance_scores.csv'))
+
     # save dataframe with mean scores
-    imp_mean=np.mean(imp_scores, axis=0, keepdims=True)
+    imp_mean=np.mean(perm_feat_imp, axis=0)
     imp_table = pd.DataFrame(index=labels)
     imp_table['mean_importance'] = np.squeeze(imp_mean)
-    imp_table.to_csv(os.path(out_folder, 'mean_importance.csv'))
+    imp_table.to_csv(os.path.join(out_folder, 'mean_importance.csv'))
 
     # plot importance scores
-    imp_table['edge'] = imp_table.index
+    imp_table['feature'] = imp_table.index
     sorted_imp_table = imp_table.sort_values(by='mean_importance', axis=0, ascending=False)
     plt.figure(figsize=(6,5))
-    sns.barplot(x='mean_importance', y='edge', data=sorted_imp_table.iloc[:20,:], ci=None, color="#3B75AF")
+    sns.barplot(x='mean_importance', y='feature', data=sorted_imp_table.iloc[:20,:], ci=None, color="#3B75AF")
     plt.xlabel('Change in {0}'.format(scoring))
     plt.ylabel('')
     plt.axvline(0, color='gray', clip_on=False)
     sns.despine()
     plt.tight_layout()
-    plt.savefig(os.path.join(out_folder, 'top_20_important_edges.svg'))
+    plt.savefig(os.path.join(out_folder, 'top_20_important_features.svg'))
     
     
     
